@@ -3,20 +3,7 @@
 //     ========================================================================================
 //burnratio
 /* 
-- El guión fue adaptado para su uso en el entrenamiento presencial ARSET de la NASA en García, Nuevo León, México (8-11 de mayo de 2023)
-- El guión fue creado originalmente para el entrenamiento ARSET (en línea): 
-- https://appliedsciences.nasa.gov/join-mission/training/english/arset-using-earth-observations-pre-and-post-fire-monitoring
-- Partes de este guión se obtuvieron del Código de Prácticas Recomendadas de UN Spider NBR
-- https://un-spider.org/advisory-support/recommended-practices/recommended-practice-burn-severity
-*/
 
-//Para este ejercicio, lo haremos:
-// (1) Cargar las imágenes Landsat anteriores y posteriores al incendio
-// (2) Calcular el Burn Ratio Normalizado (NBR) de las imágenes anteriores y posteriores al incendio
-// (3) Calcular el NBR diferenciado (dNBR) para las imágenes anteriores y posteriores al incendio
-// (4) Clasificar la gravedad de la quemadura y añadir una leyenda
-// (5) Calcular el área quemada
-// (6) Exportar las estadísticas del área quemada en formato .csv
 
 
 // ========== EL CASO PRÁCTICO DE ESTA DEMOSTRACIÓN ES DE NUEVO LEÓN ========== 
