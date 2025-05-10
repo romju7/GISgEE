@@ -1,4 +1,4 @@
-ste repositorio contiene una colección de scripts, herramientas y notebooks desarrollados para facilitar el análisis espacial en estudios socio-ecológicos. El objetivo principal es apoyar proyectos de conservación, restauración ecológica, gestión territorial y análisis de servicios ecosistémicos mediante el uso de tecnologías geoespaciales de código abierto.
+Este repositorio contiene una colección de scripts, herramientas y notebooks desarrollados para facilitar el análisis espacial en estudios socio-ecológicos. El objetivo principal es apoyar proyectos de conservación, restauración ecológica, gestión territorial y análisis de servicios ecosistémicos mediante el uso de tecnologías geoespaciales de código abierto.
 
 📌 ¿Qué encontrarás aquí?
 🛰️ Scripts en Python y R para el procesamiento de imágenes satelitales (Sentinel-2, Landsat, MODIS).
