@@ -1,0 +1,270 @@
+//     ========================================================================================
+//              Observación de la Tierra Antes y Después de los Incendios
+//     ========================================================================================
+//burnratio
+/* 
+- El guión fue adaptado para su uso en el entrenamiento presencial ARSET de la NASA en García, Nuevo León, México (8-11 de mayo de 2023)
+- El guión fue creado originalmente para el entrenamiento ARSET (en línea): 
+- https://appliedsciences.nasa.gov/join-mission/training/english/arset-using-earth-observations-pre-and-post-fire-monitoring
+- Partes de este guión se obtuvieron del Código de Prácticas Recomendadas de UN Spider NBR
+- https://un-spider.org/advisory-support/recommended-practices/recommended-practice-burn-severity
+*/
+
+//Para este ejercicio, lo haremos:
+// (1) Cargar las imágenes Landsat anteriores y posteriores al incendio
+// (2) Calcular el Burn Ratio Normalizado (NBR) de las imágenes anteriores y posteriores al incendio
+// (3) Calcular el NBR diferenciado (dNBR) para las imágenes anteriores y posteriores al incendio
+// (4) Clasificar la gravedad de la quemadura y añadir una leyenda
+// (5) Calcular el área quemada
+// (6) Exportar las estadísticas del área quemada en formato .csv
+
+
+// ========== EL CASO PRÁCTICO DE ESTA DEMOSTRACIÓN ES DE NUEVO LEÓN ========== 
+// Fecha: 24 de marzo de 2022
+// Afectado: 5 mil hectáreas
+// Ubicación: Sierra de Santiago, Nuevo León
+// Participación: Tres niveles de gobierno, 817 brigadistas de diferentes dependencias.
+
+
+//Hemos elegido las fechas exactas para las imágenes Landsat 8 anteriores y posteriores al incendio 
+//Recomendamos ver las imágenes Landsat 8 en Earth Explorer (https://earthexplorer.usgs.gov/) antes del análisis GEE
+//Hemos elegido imágenes de antes y después del incendio con una nubosidad limitada (<10%)
+
+// Información sobre Landsat 8                   
+//---------------------------------------
+// Lanzamiento:            11 de febrero de 2015  
+// resolución temporal     16 días             
+// resolución espacial:    30 metros 
+// información de banda:   https://landsat.gsfc.nasa.gov/article/landsat-data-continuity-mission/
+
+ 
+//**************************************************************************************************
+//              PARTE 1: CARGAR LAS IMÁGENES LANDSAT ANTERIORES Y POSTERIORES AL INCENDIO 
+//**************************************************************************************************
+// Establecer el mapa base para mostrar como satélite.
+Map.setOptions('SATELLITE');
+
+//Cargar la imagen previa al incendio del 1 de enero de 2022 y definir las bandas que se mostrarán en el mapa
+var pre_fireimage = ee.Image('LANDSAT/LC08/C02/T1_L2/LC08_028042_20220119');
+//Definir una variable para establecer los parámetros de visualización
+var vizParams = {
+bands: ['SR_B6', 'SR_B5', 'SR_B3'],
+};
+
+//Cargar la imagen Post Fire del 1 de mayo de 2022 y definir las bandas que se mostrarán en el mapa
+var post_fireimage = ee.Image('LANDSAT/LC08/C02/T1_L2/LC08_028042_20220612');
+var vizParams = {
+bands: ['SR_B6', 'SR_B5', 'SR_B3'],
+};
+
+// Centrar el mapa en un lon/lat con una extensión de zoom y mostrar las imágenes.
+Map.setCenter(-100.5, 26, 8);
+Map.addLayer(pre_fireimage, vizParams, 'Pre-Fire Image - Jan 2022');
+Map.addLayer(post_fireimage, vizParams, 'Post-Fire Image - June 2021');
+
+// Añade las imágenes a la consola de la derecha
+print("Pre-fire Image", pre_fireimage); 
+print("Post-fire Image", post_fireimage);
+
+
+//*******************************************************************************************
+//                      PART 2: CALCULAR EL BURN RATIO NORMALIZADO (NBR)
+//*******************************************************************************************
+
+// Ecuación      NBR = (NIR-SWIR2) / (NIR+SWIR2)
+var preNBR = pre_fireimage.normalizedDifference(['SR_B5', 'SR_B7']);
+var postNBR = post_fireimage.normalizedDifference(['SR_B5', 'SR_B7']);
+
+// Añade las imágenes NBR a la consola de la derecha
+print("Pre-fire NBR: ", preNBR); 
+print("Post-fire NBR: ", postNBR);
+
+//*******************************************************************************************
+//                             PARTE 3: CALCULAR EL DIFERENCIADO NBR (dNBR)
+//*******************************************************************************************
+
+// El resultado se llama delta NBR or dNBR
+var dNBR_unscaled = preNBR.subtract(postNBR);
+
+// Escale el producto según los estándares de USGS
+var dNBR = dNBR_unscaled.multiply(1000);
+
+// Agrega la imagen de diferencia a la consola de la derecha
+print("dNBR: ", dNBR);
+
+
+// Mostrar el producto de relación de quemado en escala de grises
+
+var grey = ['white', 'black'];
+
+// Mostrar NBR antes y después del fuego por separado
+Map.addLayer(preNBR, {min: -1, max: 1, palette: grey}, 'Pre-fire NBR');
+Map.addLayer(postNBR, {min: -1, max: 1, palette: grey}, 'Post-fire NBR');
+
+// Mostrar dNBR
+Map.addLayer(dNBR, {min: -1000, max: 1000, palette: grey}, 'dNBR greyscale');
+
+//*******************************************************************************************
+//         PARTE 4: CLASIFICAR LA GRAVEDAD DE LAS QUEMADURAS Y AGREGAR UNA LEYENDA  
+//*******************************************************************************************
+
+// Definir un descriptor de capa con estilo (SLD) de intervalos discretos para aplicar a la imagen.
+// Vea la tabla en el sitio web de UN Spider para las categorías:
+// https://un-spider.org/advisory-support/recommended-practices/recommended-practice-burn-severity/in-detail/normalized-burn-ratio
+var sld_intervals =
+  '<RasterSymbolizer>' +
+    '<ColorMap type="intervals" extended="false" >' +
+      '<ColorMapEntry color="#ffffff" quantity="-500" label="-500"/>' +
+      '<ColorMapEntry color="#7a8737" quantity="-250" label="-250" />' +
+      '<ColorMapEntry color="#acbe4d" quantity="-100" label="-100" />' +
+      '<ColorMapEntry color="#0ae042" quantity="100" label="100" />' +
+      '<ColorMapEntry color="#fff70b" quantity="270" label="270" />' +
+      '<ColorMapEntry color="#ffaf38" quantity="440" label="440" />' +
+      '<ColorMapEntry color="#ff641b" quantity="660" label="660" />' +
+      '<ColorMapEntry color="#a41fd6" quantity="2000" label="2000" />' +
+    '</ColorMap>' +
+  '</RasterSymbolizer>';
+
+// Agregue la imagen al mapa utilizando tanto la rampa de color como los esquemas de intervalo.
+Map.addLayer(dNBR.sldStyle(sld_intervals), {}, 'dNBR classified');
+
+// Separar el resultado en 8 clases de gravedad de quemaduras
+var thresholds = ee.Image([-1000, -251, -101, 99, 269, 439, 659, 2000]);
+var classified = dNBR.lt(thresholds).reduce('sum').toInt();
+
+// Agregar una leyenda
+
+// Establecer la posición del panel
+var legend = ui.Panel({
+  style: {
+    position: 'bottom-left',
+    padding: '8px 15px'
+  }});
+ 
+// Crear título de leyenda
+var legendTitle = ui.Label({
+  value: 'dNBR Classes',
+  style: {fontWeight: 'bold',
+    fontSize: '18px',
+    margin: '0 0 4px 0',
+    padding: '0'
+    }});
+ 
+// Agrega el título al panel
+legend.add(legendTitle);
+ 
+// Crea y aplica estilo a 1 fila de la leyenda.
+var makeRow = function(color, name) {
+ 
+      // Crea la etiqueta que en realidad es el cuadro de color.
+      var colorBox = ui.Label({
+        style: {
+          backgroundColor: '#' + color,
+          // Usa padding para dar la altura y el ancho de la caja.
+          padding: '8px',
+          margin: '0 0 4px 0'
+        }});
+ 
+      // Crea la etiqueta rellena con el texto de descripción.
+      var description = ui.Label({
+        value: name,
+        style: {margin: '0 0 4px 6px'}
+      });
+ 
+      // Devuelve el panel
+      return ui.Panel({
+        widgets: [colorBox, description],
+        layout: ui.Panel.Layout.Flow('horizontal')
+      })};
+ 
+// Paleta con los colores
+var palette =['7a8737', 'acbe4d', '0ae042', 'fff70b', 'ffaf38', 'ff641b', 'a41fd6', 'ffffff'];
+ 
+// Nombre de la leyenda
+var names = ['Enhanced Regrowth, High','Enhanced Regrowth, Low','Unburned', 'Low Severity',
+'Moderate-low Severity', 'Moderate-high Severity', 'High Severity', 'NA'];
+ 
+// Agregar color y nombres
+for (var i = 0; i < 8; i++) {
+  legend.add(makeRow(palette[i], names[i]));
+  }  
+ 
+// Agregar leyenda al mapa (alternativamente, también puede imprimir la leyenda en la consola)
+Map.add(legend);
+
+//*******************************************************************************************
+//                             PARTE 5: CALCULAR EL ÁREA QUEMADA  
+//*******************************************************************************************
+
+//Crea un cuadro delimitador alrededor de las áreas quemadas
+//Esto también es importante porque hay un límite en la cantidad de píxeles que se pueden incluir en las estadísticas de clase (1e10)
+
+//Los puntos de latitud/longitud de la geometría a continuación se generaron a partir de la creación de un polígono en el mapa y la extracción de los puntos finales
+var geometry = ee.Geometry.Polygon([ [[-100.2793529238883,25.242753333120334],[-100.1200511660758,25.242753333120334],[-100.1200511660758,25.391720291762365],[-100.2793529238883,25.391720291762365],[-100.2793529238883,25.242753333120334]]]);
+
+// Ubicación
+var area = ee.FeatureCollection(geometry);
+
+// Cuenta el número de píxeles en toda la capa
+var allpix =  classified.updateMask(classified);  // mask the entire layer
+var pixstats = allpix.reduceRegion({
+  reducer: ee.Reducer.count(),               // cuenta píxeles en una sola clase
+  geometry: geometry,
+  scale: 30
+  });
+var allpixels = ee.Number(pixstats.get('sum')); // extrae el recuento de píxeles como un número
+
+// Crea una lista vacía para almacenar valores de área en
+var arealist = [];
+
+// crea una función para derivar la extensión de una clase de gravedad de quemado
+// los argumentos son el número de clase y el nombre de clase
+var areacount = function(cnr, name) {
+ var singleMask =  classified.updateMask(classified.eq(cnr));  // enmascara una sola clase
+ var stats = singleMask.reduceRegion({
+  reducer: ee.Reducer.count(),               // cuenta píxeles en una sola clase
+    geometry: geometry,
+  scale: 30,
+  });
+var pix =  ee.Number(stats.get('sum'));
+var hect = pix.multiply(900).divide(10000);                // Píxel Landsat = 30m x 30m --> 900 m2
+var perc = pix.divide(allpixels).multiply(10000).round().divide(100);   // obtiene el porcentaje de área por clase y redondea a 2 decimales
+arealist.push({Class: name, Pixels: pix, Hectares: hect, Percentage: perc});
+};
+
+// clases de gravedad en diferente orden
+var names2 = ['NA', 'High Severity', 'Moderate-high Severity',
+'Moderate-low Severity', 'Low Severity','Unburned', 'Enhanced Regrowth, Low', 'Enhanced Regrowth, High'];
+
+//ejecutar funcion para cada clase
+ for (var i = 0; i < 8; i++) {
+  areacount(i, names2[i]);
+  }
+
+// imprime los valores en la consola
+print('Burned Area by Severity Class', arealist, '--> click list objects for individual classes');
+
+//*******************************************************************************************
+//                      PARTE 6: EXPORTAR ESTADÍSTICAS DE ÁREA QUEMADA COMO CSV
+//*******************************************************************************************
+
+// Exportar la lista de valores como CSV a Google Drive
+
+// Necesita convertir la ee.List a una ee.FeatureCollection para poder exportarla
+var exportable_list = ee.FeatureCollection(arealist
+                        .map(function(element){
+                        return ee.Feature(null,{Class: element.Class, Hectares: element.Hectares, Percentage: element.Percentage, Pixels: element.Pixels})}));
+
+//Imprime la colección de características en la consola para asegurarte de que se ve bien
+print(exportable_list);
+
+
+//Exportar las estadísticas del área quemada 'arealist' como un csv.
+//Elimine los comentarios del código a continuación para exportar los resultados a su Google Drive.
+
+// Export.table.toDrive({
+// collection: exportable_list,//The feature collection to export
+// folder: 'ARSET_PrePostFireMonitoring',//The folder in your Google Drive that the csv will reside in
+// description:'Santiago_BurnedArea_stats', //The name of the task for the 'Tasks'-tab
+// fileFormat: 'CSV'//A list of properties to include in the export
+// });
