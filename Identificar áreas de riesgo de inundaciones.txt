@@ -1,17 +1,4 @@
 
-  Objetivo: Identificar áreas de riesgo de inundaciones utilizando los siguientes conjuntos de datos:
-    - Precipitación IMERG, Humedad del suelo SMAP
-    
- arriba hemos importado dos polígonos:
-    - archivo de forma para México
-    - dibujó un polígono multipunto de 'Importaciones de geometría' usando el panel izquierdo en la ventana de visualización del mapa.
-    
-     Analizaremos los casos conocidos de inundaciones en las áreas de Chiapas, Tabasco, Yucatán durante octubre-noviembre de 2020 a través de los siguientes pasos:
-     - Aprenda a hacer mapas de desviación estándar y media mensual a largo plazo de la precipitación IMERG y la humedad del suelo
-     - Identificar días con precipitaciones muy altas en comparación con la media a largo plazo (grandes anomalías positivas).
-     - Identificar y marcar áreas susceptibles de ser inundadas con anomalías de alta precipitación, anomalías de humedad del suelo y terreno (canales).
-     - Superponga el mapa de población y las áreas de tierra impermeables para ver dónde el riesgo de inundación es mayor y dónde estará en peligro una gran cantidad de vidas, donde las carreteras pueden inundarse.
-       , donde las carreteras pueden inundarse.
 =========================================================================================================================================
 */ 
 // // Dibuje el shapefile de México mostrando el contorno del país y los límites de la subregión.
