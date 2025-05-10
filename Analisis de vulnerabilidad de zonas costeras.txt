@@ -1,0 +1,68 @@
+import geopandas as gpd
+import rasterio
+import numpy as np
+from rasterio.mask import mask
+from rasterstats import zonal_stats
+import matplotlib.pyplot as plt
+
+# -----------------------------
+# 1. CARGAR DATOS
+# -----------------------------
+
+# a) Línea de costa
+costa = gpd.read_file("linea_costera.shp")
+
+# b) Asentamientos
+asentamientos = gpd.read_file("asentamientos.shp")
+
+# c) Modelo de elevación
+dem_path = "modelo_elevacion.tif"
+
+# -----------------------------
+# 2. BUFFER DE VULNERABILIDAD (ej. 5 km desde la costa)
+# -----------------------------
+buffer = costa.buffer(5000)  # 5000 metros
+zona_buffer = gpd.GeoDataFrame(geometry=buffer, crs=costa.crs)
+
+# -----------------------------
+# 3. MASCARA DEL DEM DENTRO DEL BUFFER
+# -----------------------------
+with rasterio.open(dem_path) as src:
+    out_image, out_transform = mask(src, zona_buffer.geometry, crop=True)
+    out_meta = src.meta
+
+# -----------------------------
+# 4. GENERAR MÁSCARA DE BAJA ELEVACIÓN (ej. < 5 m)
+# -----------------------------
+elev_array = out_image[0]
+vulnerable = np.where((elev_array >= 0) & (elev_array < 5), 1, 0)  # binariza
+
+# Visualizar el área vulnerable
+plt.imshow(vulnerable, cmap='Blues')
+plt.title('Zonas bajo 5m s.n.m. dentro de zona costera')
+plt.colorbar(label='Área vulnerable')
+plt.show()
+
+# -----------------------------
+# 5. ANÁLISIS DE ASENTAMIENTOS EN ZONAS VULNERABLES
+# -----------------------------
+# Recortar asentamientos al buffer costero
+asentamientos_clip = gpd.overlay(asentamientos, zona_buffer, how='intersection')
+
+# Calcular qué asentamientos están en zona vulnerable usando zonal_stats
+vuln_stats = zonal_stats(asentamientos_clip, vulnerable, affine=out_transform, stats=['mean'])
+
+# Agregar resultado al GeoDataFrame
+asentamientos_clip["vulnerabilidad_media"] = [stat['mean'] for stat in vuln_stats]
+
+# Filtrar solo los vulnerables (> 0.2 de su superficie en zona baja)
+vuln_asentamientos = asentamientos_clip[asentamientos_clip["vulnerabilidad_media"] > 0.2]
+
+# Guardar resultados
+vuln_asentamientos.to_file("asentamientos_vulnerables.shp")
+
+# -----------------------------
+# 6. RESUMEN
+# -----------------------------
+print("Total de asentamientos en zona costera:", len(asentamientos_clip))
+print("Asentamientos vulnerables (<5m):", len(vuln_asentamientos))
