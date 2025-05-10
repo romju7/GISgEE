@@ -1,0 +1,55 @@
+# Librerías necesarias
+import geopandas as gpd
+import pandas as pd
+import folium
+from shapely.geometry import Point
+from shapely.geometry import Polygon
+from shapely.ops import nearest_points
+
+# ----------------------------------------
+# 1. CARGA DE DATOS PARTICIPATIVOS
+# ----------------------------------------
+
+# Ruta al archivo CSV con coordenadas y atributos (obtenido por GPS o encuesta)
+csv_path = "datos_participativos.csv"
+
+# Leer el archivo con pandas
+df = pd.read_csv(csv_path)
+
+# Crear geometría a partir de lat/lon
+geometry = [Point(xy) for xy in zip(df["lon"], df["lat"])]
+gdf = gpd.GeoDataFrame(df, geometry=geometry, crs="EPSG:4326")
+
+# Verificar los primeros datos
+print(gdf.head())
+
+# ----------------------------------------
+# 2. VISUALIZACIÓN INTERACTIVA CON FOLIUM
+# ----------------------------------------
+
+# Crear el mapa base centrado en los datos
+m = folium.Map(location=[gdf["lat"].mean(), gdf["lon"].mean()], zoom_start=13, tiles="OpenStreetMap")
+
+# Añadir puntos al mapa con íconos según categoría
+for _, row in gdf.iterrows():
+    icon_color = {
+        "bosque": "green",
+        "sitio cultural": "orange",
+        "productivo": "blue"
+    }.get(row["categoría"], "gray")
+
+    folium.Marker(
+        location=[row["lat"], row["lon"]],
+        popup=folium.Popup(f"{row['nombre']}<br>{row['categoría']}", max_width=300),
+        icon=folium.Icon(color=icon_color, icon="info-sign")
+    ).add_to(m)
+
+# Guardar mapa interactivo
+m.save("mapa_interactivo_participativo.html")
+
+# ----------------------------------------
+# 3. ANÁLISIS ESPACIAL BÁSICO
+# ----------------------------------------
+
+# 3.1 Crear un buffer de 200 metros alrededor de cada punto
+gdf["buffer_200m"] = gdf.geometry_]()
