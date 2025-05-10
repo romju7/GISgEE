@@ -1,0 +1,307 @@
+
+  Objetivo: Identificar áreas de riesgo de inundaciones utilizando los siguientes conjuntos de datos:
+    - Precipitación IMERG, Humedad del suelo SMAP
+    
+ arriba hemos importado dos polígonos:
+    - archivo de forma para México
+    - dibujó un polígono multipunto de 'Importaciones de geometría' usando el panel izquierdo en la ventana de visualización del mapa.
+    
+     Analizaremos los casos conocidos de inundaciones en las áreas de Chiapas, Tabasco, Yucatán durante octubre-noviembre de 2020 a través de los siguientes pasos:
+     - Aprenda a hacer mapas de desviación estándar y media mensual a largo plazo de la precipitación IMERG y la humedad del suelo
+     - Identificar días con precipitaciones muy altas en comparación con la media a largo plazo (grandes anomalías positivas).
+     - Identificar y marcar áreas susceptibles de ser inundadas con anomalías de alta precipitación, anomalías de humedad del suelo y terreno (canales).
+     - Superponga el mapa de población y las áreas de tierra impermeables para ver dónde el riesgo de inundación es mayor y dónde estará en peligro una gran cantidad de vidas, donde las carreteras pueden inundarse.
+       , donde las carreteras pueden inundarse.
+=========================================================================================================================================
+*/ 
+// // Dibuje el shapefile de México mostrando el contorno del país y los límites de la subregión.
+    Map.addLayer(Mexico,{palette: ['green']},'Mexico');
+// 
+// Dibuje el shapefile de México que muestre el contorno del país y la subregión Recopile datos IMERG de enero de 2001 a diciembre de 2022 para obtener valores medios a largo plazo.
+// Tenga en cuenta que los datos IMERG están disponibles cada seis horas.
+// Primero calcularemos la precipitación acumulada diaria
+// Aquí primero definimos los límites del rango de fechas.
+//
+   var startdate =  ee.Date.fromYMD(2001,01,01);
+   var enddate = ee.Date.fromYMD(2023,01,01);
+//
+// Ahora cree una lista de fechas para las cuales se calcularán los datos diarios
+//
+   var difdate = enddate.advance(-1,'day').difference(startdate,'day');
+   var createList = ee.List.sequence(0, difdate) 
+   var listdates = createList.map(function(day){ 
+   return startdate.advance(day, 'day')
+})
+   print(listdates)      // verá la lista de fechas en la consola en la ventana derecha ====>
+//
+// Obtenga el conjunto de datos de la colección de imágenes IMERG para el rango de fechas (filtre con la fecha de inicio a la fecha de finalización definida anteriormente)
+//
+   var dataset = ee.ImageCollection('NASA/GPM_L3/IMERG_V06')
+   var precip = dataset.filterDate(startdate,enddate); 
+//
+// Sume los datos de precipitación cada media hora a los datos de precipitación diaria y guárdelos en 'PrDailyCollection'
+// Los datos de precipitación estarán en mm/día
+//
+    var PrDailyCollection  = ee.ImageCollection.fromImages(listdates.map(function(sum_day){
+       var filterCol = precip.filterDate(ee.Date(sum_day), ee.Date(sum_day).advance(1, 'day'))
+       return filterCol.sum().setMulti({
+        Date: ee.Date(sum_day), 'system:time_start': ee.Date(sum_day).millis()
+    }); 
+ }))
+    print(PrDailyCollection.limit(200))    // imprime los primeros 200 elementos en la consola y comprueba las fechas
+//
+// Ahora recorte los datos en el archivo de forma de México, seleccionando la banda 'precipitaionCal' que contiene valores de precipitación en mm/día
+    var precipitation = PrDailyCollection.select('precipitationCal').map(function(img){return img.clip(Mexico)});
+//
+// A continuación, encontramos la media mensual y la desviación estándar de octubre (cuando ocurrieron las inundaciones)
+// 
+   var prOct = precipitation.filterDate(startdate,enddate).filter(ee.Filter.calendarRange(10,10,'month')).mean();
+   var prOct_sd = precipitation.filterDate(startdate,enddate).filter(ee.Filter.calendarRange(10,10,'month'));
+    print(prOct);    // check the console to see the data list
+  print(prOct_sd);
+//
+// LO SIGUIENTE ES PARA SU EJERCICIO - REPITA EL ANÁLISIS SIGUIENTE PARA NOVIEMBRE
+//
+///  var prNov = precipitation.filterDate(startdate,enddate).filter(ee.Filter.calendarRange(11,11,'month')).mean();
+//  var prNov_sd = precipitation.filterDate(startdate,enddate).filter(ee.Filter.calendarRange(11,11,'month')).filter(ee.Reducer.stdDev());
+//   print(prNov);    // check the console to see the data list
+//
+//  Ahora trace la precipitación media de octubre (prOct calculado arriba) (promediada durante 2001-2022)
+//  Definir colores
+//
+   var colors = ['red', 'yellow', 'green', 'cyan', 'purple', 'blue'];
+//
+// mostrar el mapa de precipitaciones medias
+//
+   var precipitationVis = {min: 1.0, max:30.0, palette: colors};
+   Map.addLayer(prOct, precipitationVis, 'Precipitation');
+//
+// mostrar el mapa de desviación estándar de precipitación
+//
+//   var precipitationVis = {min: 1.0, max:30.0, palette: colors};
+//   Map.addLayer(prOct_sd, precipitationVis, 'Precipitation_sd');
+//
+// Trazar series de tiempo de datos diarios de 2001 a 2022, para el mes de octubre, promediados sobre las regiones de interés.
+// Con base en el mapa de precipitación media, hemos elegido las áreas de Yucatán, Chiapas, Tabasco.
+//
+    var prTsOct = precipitation.filterDate(startdate,enddate).filter(ee.Filter.calendarRange(10,10,'month'));
+    print(prTsOct);
+
+    var PrecipTs = ui.Chart.image.seriesByRegion({
+    imageCollection: prTsOct,
+    regions: roi,   //Este es el polígono de tu selección. 
+    reducer: ee.Reducer.mean(), // tipo de reducción. Ver ee.Reducers para otros tipos de reducciones
+    scale: 10000, // esta es la escala del tamaño de la cuadrícula de datos IMERG en metros cuadrados
+})
+  .setOptions({
+    title: 'Precipitation Rate',
+    vAxis: {title: 'IMERG', maxValue: 30, minValue: 0.5},
+    hAxis: {title: '31 days for each October', format: 'yy', gridlines: {count: 22}},
+    
+  })
+    var  PrecipTs = PrecipTs.setChartType('ColumnChart')
+    print(PrecipTs);
+   //
+//   Verás la serie temporal en la consola
+//
+// Encuentre anomalías diarias o diferencia para la media mensual a largo plazo
+// prTSOct es la colección de datos para todos los meses de octubre
+// Elegimos 2020 Octubre
+//
+   var prOct2020 = prTsOct.filter(ee.Filter.calendarRange(2020,2020,'year'));
+   print(prOct2020);
+   var pranomaly = prOct2020.map(function(image) {
+    return (image.subtract(prOct)).clip(Mexico)
+    .set('system:time_start', image.get('system:time_start'));
+});
+    print(pranomaly);
+// 
+// Serie temporal de precipitaciones de anomalías
+//
+  var PrTs = ui.Chart.image.seriesByRegion({
+    imageCollection: pranomaly,
+    regions: roi,   // Este es el polígono de tu selección.
+    reducer: ee.Reducer.mean(), // tipo de reducción. Ver ee.Reducers para otros tipos de reducciones
+    scale: 10000, // esta es la escala del tamaño de la cuadrícula de datos IMERG en metros cuadrados
+})
+  .setOptions({
+    title: 'Precipitation anomaly',
+    vAxis: {title: 'IMERG', maxValue: 30, minValue: 0.5},
+    hAxis: {title: 'day', format: 'dd', gridlines: {count: 31}},
+    
+  })
+    var PrTs = PrTs.setChartType('ColumnChart')
+    print(PrTs);
+
+// Definir argumentos para los parámetros de la función de animación
+//
+ var videoArgs = {
+  dimensions: 1000,
+  region: roi,
+  framesPerSecond: 1,
+  min: -30.0,
+  max:  40.0,
+  palette: ['red', 'yellow', 'green', 'cyan', 'purple', 'blue']
+};
+//
+// Crear animación -- ver en la ventana de la consola
+//
+    print(ui.Thumbnail(pranomaly, videoArgs));
+//
+// Cree marcos estáticos de la colección de imágenes, obtendrá una URL en la ventana de la consola
+//
+  print(pranomaly.getFilmstripThumbURL(videoArgs));
+//
+// De la animación anomnaly, nos enfocamos en elegir la primera semana de octubre de 2020 para evaluar el riesgo de inundación
+//
+  var pranom_1to8Oct = pranomaly.filter(ee.Filter.date('2020-10-01', '2020-10-09')).mean();
+//
+// Ahora trace el mapa de anomalías (1-8 de octubre de 2020)
+//
+     var precipitationVis = {min: -30, max:30.0, palette: colors};
+     Map.addLayer(pranom_1to8Oct, precipitationVis, 'IMERG 1-8 October 2020 Anomaly');
+//
+// Comprobar el estado de humedad del suelo
+// Use diariamente la humedad del suelo superficial de 9 km de SMAP
+// Comprobamos la humedad del suelo del mes anterior para ver el patrón espacial de la humedad del suelo
+//
+  var dataset = ee.ImageCollection('NASA/SMAP/SPL3SMP_E/005')
+                  .filter(ee.Filter.date('2020-09-01', '2020-10-01'));
+  print(dataset)
+
+  var soilMositureSurface = dataset.select('soil_moisture_am')
+  print(soilMositureSurface);
+  var SMmean = soilMositureSurface.mean().clip(Mexico);
+  var SMVis = {
+  min: 0.0,
+  max: 0.5,
+  palette: ['ff0303','efff07','efff07','418504','0300ff'],
+};
+
+ Map.addLayer(SMmean, SMVis, 'Soil Mositure');
+ 
+ //====================================================================
+//=======================================================================================
+/*
+  - La siguiente sección agrega capas de datos auxiliares
+  - Ahora agregamos capas de elevación, pendiente, aspecto, sombreado y asentamiento humano de las pantallas SRTM recortadas a
+    los bordes del roi (donde ocurrió la inundación) (demostrado anteriormente por Sean McCartney)
+  - Luego agregamos datos de conteo de población y capas de imágenes de luz nocturna
+  - en base a estos datos, junto con los datos anómalos de precipitación, identificaremos áreas
+    donde la población humana y la infraestructura están en riesgo de inundación
+*/
+// Definir parámetros de visualización para min/max y paleta de colores
+//
+var elevationVis = {
+  min: 0.0,
+  max: 5000.0,
+  palette: ['0000ff','00ffff','ffff00','ff0000','ffffff'],
+};
+
+var slopeVis = {
+  min: 0.0,
+  max: 60.0,
+  palette: ['0000ff','00ffff','ffff00','ff0000','ffffff'],
+};
+
+var aspectVis = {
+  min: 0.0,
+  max: 360.0,
+  palette: ['0000ff','00ffff','ffff00','ff0000','ffffff'],
+};
+
+// Establezca el centro del mapa en su AOI y especifique el nivel de zoom, de 1 a 24 (1 = todo el planeta; 24 = la región más pequeña posible)
+ Map.centerObject(Mexico, 5);
+// Definir una variable para la imagen de NASA Shuttle Radar Topography Mission (SRTM) y recortar la imagen en el archivo de forma de México
+// https://developers.google.com/earth-engine/datasets/catalog/CGIAR_SRTM90_V4
+var SRTM = ee.Image('CGIAR/SRTM90_V4').clip(roi);
+// Definir una variable "elevación" y seleccionar la banda de elevación de la imagen SRTM
+//
+var elevation = SRTM.select('elevation');
+
+//Defina variables para "pendiente", "aspecto" y "sombreado" y use la función Terreno para calcular cada una
+var slope = ee.Terrain.slope(elevation);
+var aspect = ee.Terrain.aspect(elevation);
+var hillshade = ee.Terrain.hillshade(elevation);
+
+// Agregar todas las capas al panel del mapa
+Map.addLayer(aspect, aspectVis, 'aspect');
+Map.addLayer(slope, slopeVis, 'slope');
+Map.addLayer(elevation, elevationVis, 'DEM');
+Map.addLayer(hillshade, {min: 0, max: 255}, 'hillshade');
+
+// Definir una variable para World Settlement Footprint (WSF; https://developers.google.com/earth-engine/datasets/catalog/DLR_WSF_WSF2015_v1)
+var settlements = ee.Image('DLR/WSF/WSF2015/v1').clip(roi);
+
+// Definir una variable para visualizar el FSM
+var settlementVis = {
+  min: 0,
+  max: 255,
+  palette: 'cc0013'
+};
+
+// Agrega la capa al panel del mapa
+Map.addLayer(settlements, settlementVis, 'Human settlement areas');
+//
+// Agregar conjunto de datos de población (GWPv4.11);
+ var dataset = ee.ImageCollection('CIESIN/GPWv411/GPW_Population_Count').first().clip(roi);
+ var popcount = dataset.select('population_count');
+ var popcount_vis = {
+  'max': 500.0,
+  'palette': [
+    'ffffe7',
+    '86a192',
+    '509791',
+    '307296',
+    '2c4484',
+    '000066'
+  ],
+  'min': 0.0
+};
+// Mapa de conteo de población (por km cuadrado)
+ Map.addLayer(popcount, popcount_vis, 'population_count');
+ print(popcount);
+//
+// Agregar datos de luz nocturna de VIIRS
+//
+ var dataset = ee.ImageCollection('NOAA/VIIRS/001/VNP46A2').filter(ee.Filter.date('2020-10-01', '2020-11-01'))
+// Función de distribución de reflectancia bidireccional (BRDF)
+ print(dataset);
+ var temp = dataset.select('Gap_Filled_DNB_BRDF_Corrected_NTL');
+ var brdf = temp.map(function(image) { 
+   return (image).clip(roi);
+ });
+var brdfVis = {
+  min: 0,
+  max: 100,
+  palette: ['black', 'purple', 'cyan', 'green', 'yellow', 'red', 'white'],
+};
+// Banda Día/Noche (DNB)
+// Luz nocturna (NTL)
+   Map.addLayer(brdf, brdfVis, 'DNB_BRDF_Corrected_NTL');
+//
+/*
+// Animar mapas de luz nocturna
+// Definir argumentos para los parámetros de la función de animación
+//
+ var videoArgs = {
+ dimensions: 1000,
+ region: roi,
+  framesPerSecond: 1,
+  min: 0.0,
+  max:  500,
+  palette: ['blue', 'purple', 'cyan', 'green', 'yellow', 'red']
+};
+//
+// Crear animación -- ver en la ventana de la consola
+//
+    print(ui.Thumbnail(brdf, videoArgs));
+//
+// Crea marcos estáticos de la colección de imágenes, obtendrá una URL en la ventana de la consola
+//
+  print(brdf.getFilmstripThumbURL(videoArgs));
+//
+*/
+//
+//=======================================================================================
+
