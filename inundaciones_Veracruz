@@ -1,0 +1,134 @@
+// ======================================================
+// ÁREA DE ESTUDIO (Poza Rica – Barra de Cazones)
+// ======================================================
+var AOI = ee.Geometry.Rectangle([-97.70, 20.35, -97.25, 20.70]).buffer(5000);
+Map.centerObject(AOI, 9);
+
+// ======================================================
+//  PASADAS European Space Agency SENTINEL-2 CON FECHA, HORA Y ÓRBITA
+// ======================================================
+var s2List = ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED')
+  .filterBounds(AOI)
+  .filterDate('2025-10-01', '2025-10-31')
+  .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 70));
+
+var info = s2List.map(function(img){
+  var utc = ee.Date(img.get('system:time_start'));
+  var local = utc.advance(-5, 'hour'); // UTC-5 hora local de México
+  return ee.Feature(null, {
+    'Fecha_UTC': utc.format('YYYY-MM-dd HH:mm'),
+    'Hora_local': local.format('YYYY-MM-dd HH:mm'),
+    'Nubes_%': img.get('CLOUDY_PIXEL_PERCENTAGE'),
+    'Órbita': img.get('SENSING_ORBIT_NUMBER'),
+    'Tile': img.get('MGRS_TILE')
+  });
+});
+print('🛰️ Pasadas Sentinel-2 (Oct 2025, Poza Rica):', info);
+
+// ======================================================
+// 3️⃣ SENTINEL-2 LIMPIO Y MOSAICADO
+// ======================================================
+function getS2(fechaInicio, fechaFin) {
+  return ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED')
+    .filterBounds(AOI)
+    .filterDate(fechaInicio, fechaFin)
+    .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 60))
+    .map(function(img) {
+      var qa = img.select('QA60');
+      var mask = qa.bitwiseAnd(1 << 10).eq(0)
+                  .and(qa.bitwiseAnd(1 << 11).eq(0));
+      return img.updateMask(mask);
+    })
+    .mosaic()
+    .clip(AOI);
+}
+
+var antes = getS2('2025-09-01','2025-09-30');
+var despues = getS2('2025-10-05','2025-10-15');
+
+// ======================================================
+// 4️⃣ ÍNDICES DE HUMEDAD E INUNDACIÓN (Sentinel-2)
+// ======================================================
+var ndwiAntes = antes.normalizedDifference(['B3','B8']).rename('NDWI_Antes');
+var ndwiDespues = despues.normalizedDifference(['B3','B8']).rename('NDWI_Despues');
+var mndwiAntes = antes.normalizedDifference(['B3','B11']).rename('MNDWI_Antes');
+var mndwiDespues = despues.normalizedDifference(['B3','B11']).rename('MNDWI_Despues');
+var ndtiAntes = antes.normalizedDifference(['B11','B12']).rename('NDTI_Antes');
+var ndtiDespues = despues.normalizedDifference(['B11','B12']).rename('NDTI_Despues');
+
+// Diferencias de humedad
+var deltaNDWI = ndwiDespues.subtract(ndwiAntes).rename('ΔNDWI');
+var deltaMNDWI = mndwiDespues.subtract(mndwiAntes).rename('ΔMNDWI');
+var deltaNDTI = ndtiAntes.subtract(ndtiDespues).rename('ΔNDTI');
+
+// Mapa de inundación óptica global (Sentinel)
+var floodS2 = deltaNDWI.gt(0.1)
+  .or(deltaMNDWI.gt(0.1))
+  .or(deltaNDTI.gt(0.1))
+  .selfMask()
+  .rename('Flood_Sentinel');
+
+// ======================================================
+// 5️⃣ JRC GLOBAL SURFACE WATER (opcional validación)
+// ======================================================
+var jrc = ee.ImageCollection('JRC/GSW1_4/MonthlyHistory')
+  .filterDate('2025-10-01','2025-10-31')
+  .select('water')
+  .mosaic()
+  .clip(AOI);
+
+// ======================================================
+// 6️⃣ ESA WORLD COVER 2021 (Sentinel-based, 10 m)
+// ======================================================
+var worldcover = ee.ImageCollection('ESA/WorldCover/v200')
+  .first()
+  .select('Map')
+  .clip(AOI);
+Map.addLayer(worldcover,
+  {min:10, max:100, palette:['006400','ffbb22','ffff4c','f096ff','fa0000',
+                             'b4b4b4','f0f0f0','0064c8','0096a0','00cf75',
+                             'fae6a0','000000']},
+  'ESA WorldCover 2021');
+
+// ======================================================
+// 7️⃣ CÁLCULO DE ÁREA TOTAL Y POR COBERTURA
+// ======================================================
+function calcArea(mask, nombre, scale) {
+  var a = mask.multiply(ee.Image.pixelArea())
+    .reduceRegion({
+      reducer: ee.Reducer.sum(),
+      geometry: AOI,
+      scale: scale,
+      maxPixels: 1e13
+    }).get(mask.bandNames().get(0));
+  print('Área inundada (' + nombre + ') [ha]:', ee.Number(a).divide(10000));
+}
+
+// 🔹 Área total inundada
+calcArea(floodS2, 'Total inundado (Sentinel-2, 10 m)', 10);
+
+// 🔹 Áreas por tipo de cobertura (WorldCover)
+var classes = {
+  10:'Bosque cerrado', 20:'Bosque abierto', 30:'Matorral',
+  40:'Tierra cultivada', 50:'Herbácea', 60:'Vegetación inundable',
+  70:'Manglar', 80:'Área urbana',
+   100:'Desnudo'
+};
+
+Object.keys(classes).forEach(function(cl){
+  var clase = parseInt(cl);
+  var maskClass = floodS2.updateMask(worldcover.eq(clase));
+  calcArea(maskClass, 'Inundado en ' + classes[cl], 10);
+});
+
+// ======================================================
+// VISUALIZACIÓN FINAL
+// ======================================================
+var visNDWI = {min:-1, max:1, palette:['brown','yellow','blue']};
+Map.addLayer(ndwiAntes, visNDWI, 'NDWI Antes (S2)');
+Map.addLayer(ndwiDespues, visNDWI, 'NDWI Después (S2)');
+Map.addLayer(floodS2, {palette:['#0000ff']}, 'Inundación Sentinel-2 (10 m)');
+Map.addLayer(jrc, {min:0, max:3,
+  palette:['white','lightblue','blue','darkblue']},
+  'JRC Agua superficial (Oct-2025)');
+
